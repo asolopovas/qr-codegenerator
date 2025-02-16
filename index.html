@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Compact Vue + node-qrcode (vCard RFC6350 + Minimal Version + Auto Update)</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 (Global Build) -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <!-- node-qrcode -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@latest/build/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .wrap-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 200px;
+            overflow: auto;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: #eee;
+            border: none;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800">
+
+    <div id="app" class="max-w-6xl mx-auto p-4">
+        <h1 class="text-3xl font-bold mb-8">Compact Vue + node-qrcode</h1>
+
+        <div class="flex flex-col md:flex-row gap-6">
+            <div class="w-full md:w-1/2 space-y-4">
+                <div>
+                    <label class="block font-semibold mb-1 text-2xl">Choose Input Mode</label>
+                    <hr>
+                    <div class="inline-flex items-center space-x-4">
+                        <label class="inline-flex items-center space-x-1 cursor-pointer">
+                            <input type="radio" value="vcard" v-model="mode" />
+                            <span>vCard (RFC6350)</span>
+                        </label>
+                        <label class="inline-flex items-center space-x-1 cursor-pointer">
+                            <input type="radio" value="text" v-model="mode" />
+                            <span>Plain Text</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div v-if="mode === 'text'">
+                    <label class="block font-semibold mb-1">Text to Encode</label>
+                    <textarea rows="4" v-model="plainText"
+                        class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring"
+                        placeholder="Enter text..."></textarea>
+                </div>
+
+                <div v-if="mode === 'vcard'" class="space-y-2">
+                    <!-- Main Details -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <div>
+                            <label class="block font-semibold mb-1">First Name</label>
+                            <input type="text" v-model="vcardData.givenName"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="John" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Last Name</label>
+                            <input type="text" v-model="vcardData.familyName"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="Doe" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Title</label>
+                            <input type="text" v-model="vcardData.title"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="Software Engineer" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Email</label>
+                            <input type="email" v-model="vcardData.email"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="john@example.com" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Phone</label>
+                            <input type="tel" v-model="vcardData.phone"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="+1 555 123 4567" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Organization</label>
+                            <input type="text" v-model="vcardData.org"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="Example Company" />
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Website (URL)</label>
+                            <input type="url" v-model="vcardData.url"
+                                class="w-full p-2 border border-gray-300 rounded text-sm"
+                                placeholder="https://example.org" />
+                        </div>
+                    </div>
+                    <!-- Address Fields -->
+                    <label class="block font-semibold">Address</label>
+                    <hr>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <div v-for="adrField in addressFields" :key="adrField.key"
+                            class="flex flex-col">
+                            <label class="text-xs font-medium mb-2">{{ adrField.label }}</label>
+                            <input :placeholder="adrField.placeholder"
+                                v-model="vcardData.address[adrField.key]"
+                                class="p-2 border border-gray-300 rounded text-sm" />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="inline-flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" v-model="vcardData.enableSocial" />
+                            <span>Enable Social Links</span>
+                        </label>
+                        <div v-if="vcardData.enableSocial" class="mt-2 space-y-1">
+                            <div v-for="sf in socialFields" :key="sf.key">
+                                <input type="url" :placeholder="sf.placeholder"
+                                    v-model="vcardData[sf.key]"
+                                    class="w-full p-2 border border-gray-300 rounded text-sm" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/2">
+                <div class="p-4 bg-white border border-gray-200 rounded shadow-sm mb-6">
+                    <canvas ref="qrCanvas" class="border border-gray-300 mb-3"></canvas>
+                    <div v-if="outputString" class="relative">
+                        <button @click="copyOutput"
+                            class="absolute right-1 top-1 text-xs bg-gray-200 hover:bg-gray-300 border px-2 py-1 rounded">
+                            Copy
+                        </button>
+                        <pre class="p-2 bg-gray-100 text-xs md:text-sm wrap-text rounded">
+                            {{ outputString }}
+                        </pre>
+                    </div>
+                </div>
+                <!-- Basic QR Settings -->
+                <div class="mb-6">
+                    <label class="block font-semibold mb-1 text-2xl">Basic QR Settings</label>
+                    <hr>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <template v-for="(field,idx) in basicQrFields" :key="field.key">
+                            <div v-if="idx < 2">
+                                <label class="text-sm font-medium">{{ field.label }}</label>
+                                <input :type="field.type" :placeholder="field.placeholder"
+                                    :min="field.min" v-model="basicOptions[field.key]"
+                                    class="border border-gray-300 rounded p-1 w-full focus:outline-none focus:ring" />
+                            </div>
+                        </template>
+                        <template v-for="(field,idx) in basicQrFields" :key="idx">
+                            <div>
+                                <label class="text-sm font-medium">{{ field.label }}</label>
+                                <input :type="field.type" :placeholder="field.placeholder"
+                                    :min="field.min" v-model="basicOptions[field.key]"
+                                    class="border border-gray-300 rounded p-1 w-full focus:outline-none focus:ring" />
+                            </div>
+                        </template>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <template v-for="(field,idx) in colorsQrFields" :key="idx">
+                            <div>
+                                <label class="text-sm font-medium">{{ field.label }}</label>
+                                <input :type="field.type" :placeholder="field.placeholder"
+                                    :min="field.min" v-model="colorOptions[field.key]"
+                                    class="border border-gray-300 rounded p-1 w-full focus:outline-none focus:ring" />
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-semibold mb-1 text-2xl">Advanced Settings</label>
+                    <hr class="mb-4">
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-sm font-medium">Error Correction</label>
+                            <select v-model="advOptions.errorCorrectionLevel"
+                                class="border p-1 w-full">
+                                <option value="L">L (~7%)</option>
+                                <option value="M">M (~15%)</option>
+                                <option value="Q">Q (~25%)</option>
+                                <option value="H">H (~30%)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Mask Pattern (0-7 or
+                                blank)</label>
+                            <input type="number" min="0" max="7" v-model="advOptions.maskPattern"
+                                class="border p-1 w-full" placeholder="Auto" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Version (1-40 or blank)</label>
+                            <input type="number" min="1" max="40" v-model="advOptions.version"
+                                class="border p-1 w-full" placeholder="Auto (will pick minimal)" />
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" v-model="advOptions.small" />
+                            <label class="text-sm">"small" for Terminal/UTF8</label>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-semibold mb-1 text-2xl">Output Type</label>
+                    <select v-model="advOptions.outputType"
+                        class="border p-1 rounded w-full focus:outline-none focus:ring">
+                        <option value="canvas">Canvas</option>
+                        <option value="dataURL">Data URL (PNG)</option>
+                        <option value="svg">SVG</option>
+                        <option value="terminal">Terminal Text</option>
+                        <option value="utf8">UTF8 Text</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <button v-for="btn in mainButtons" :key="btn.label" :class="btn.class"
+                        @click="btn.action">
+                        {{ btn.label }}
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <button @click="showAdvancedModal = true"
+                        class="px-3 py-1 border border-gray-400 rounded hover:bg-gray-100 text-sm">
+                        Advanced Options
+                    </button>
+                    <button @click="showSavedModal = true"
+                        class="px-3 py-1 border border-gray-400 rounded hover:bg-gray-100 text-sm">
+                        Saved Configs
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showAdvancedModal" class="modal-overlay">
+            <div class="modal-content">
+                <button class="modal-close-btn" @click="showAdvancedModal = false">Close</button>
+                <h3 class="text-xl font-semibold mb-3">Advanced Options</h3>
+                <div class="space-y-3">
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showSavedModal" class="modal-overlay">
+            <div class="modal-content">
+                <button class="modal-close-btn" @click="showSavedModal = false">Close</button>
+                <h3 class="text-xl font-semibold mb-3">Saved Configurations</h3>
+
+                <div class="mb-3 space-x-2">
+                    <button @click="saveCurrentConfig"
+                        class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">
+                        Save Current
+                    </button>
+                    <button @click="clearAllConfigs"
+                        class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700">
+                        Clear All
+                    </button>
+                </div>
+
+                <div v-if="savedConfigs.length === 0" class="text-sm text-gray-600">
+                    No saved configs yet.
+                </div>
+                <table v-else class="w-full border text-sm">
+                    <thead class="border-b bg-gray-100">
+                        <tr>
+                            <th class="text-left px-2 py-1">Date</th>
+                            <th class="text-left px-2 py-1">Mode</th>
+                            <th class="text-left px-2 py-1">Name</th>
+                            <th class="text-left px-2 py-1">Email</th>
+                            <th class="text-right px-2 py-1">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(cfg, i) in savedConfigs" :key="cfg.id"
+                            class="border-b last:border-b-0">
+                            <td class="px-2 py-1">{{ new Date(cfg.date).toLocaleString() }}</td>
+                            <td class="px-2 py-1">{{ cfg.state.mode }}</td>
+                            <td class="px-2 py-1">
+                                <span v-if="cfg.state.mode==='vcard'">
+                                    {{ (cfg.state.vcardData.givenName||'') + ' ' +
+                                    (cfg.state.vcardData.familyName||'') }}
+                                </span>
+                                <span v-else>N/A</span>
+                            </td>
+                            <td class="px-2 py-1">
+                                <span v-if="cfg.state.mode==='vcard'">
+                                    {{ cfg.state.vcardData.email||'N/A' }}
+                                </span>
+                                <span v-else>N/A</span>
+                            </td>
+                            <td class="px-2 py-1 text-right space-x-1">
+                                <button
+                                    class="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                    @click="loadConfig(cfg)">
+                                    Load
+                                </button>
+                                <button
+                                    class="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                                    @click="deleteConfig(i)">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const {createApp, ref, watch, onMounted} = Vue
+        createApp({
+            setup() {
+                const showAdvancedModal = ref(false)
+                const showSavedModal = ref(false)
+                const mode = ref('canvas')
+                const plainText = ref('')
+                const vcardData = ref({
+                    givenName: '',
+                    familyName: '',
+                    title: '',
+                    email: '',
+                    phone: '',
+                    org: '',
+                    url: '',
+                    address: {
+                        pobox: '',
+                        ext: '',
+                        street: '',
+                        locality: '',
+                        region: '',
+                        postal: '',
+                        country: ''
+                    },
+                    enableSocial: false,
+                    linkedin: '',
+                    twitter: '',
+                    facebook: '',
+                    instagram: '',
+                    github: ''
+                })
+                const socialFields = [
+                    {key: 'linkedin', placeholder: 'LinkedIn URL'},
+                    {key: 'twitter', placeholder: 'Twitter URL'},
+                    {key: 'facebook', placeholder: 'Facebook URL'},
+                    {key: 'instagram', placeholder: 'Instagram URL'},
+                    {key: 'github', placeholder: 'GitHub URL'}
+                ]
+                const addressFields = [
+                    {key: 'street', label: 'Street', placeholder: '123 Main St'},
+                    {key: 'ext', label: 'Extended', placeholder: 'Suite/Apt'},
+                    {key: 'locality', label: 'Locality', placeholder: 'City'},
+                    {key: 'region', label: 'Region', placeholder: 'State/Province'},
+                    {key: 'pobox', label: 'PO Box', placeholder: 'P.O. Box 123'},
+                    {key: 'postal', label: 'Postal Code', placeholder: '12345'},
+                    {key: 'country', label: 'Country', placeholder: 'USA'}
+                ]
+                const basicOptions = ref({
+                    margin: 4,
+                    width: 200,
+                    scale: 3,
+                })
+                const advOptions = ref({
+                    errorCorrectionLevel: 'M',
+                    version: 7,
+                    maskPattern: '',
+                    small: true,
+                    outputType: 'svg'
+                })
+                const basicQrFields = [
+                    {key: 'margin', label: 'Margin', type: 'number', min: 0, placeholder: ''},
+                    {key: 'width', label: 'Width (px)', type: 'number', min: 1, placeholder: '256'},
+                    {key: 'scale', label: 'Scale', type: 'number', min: 1, placeholder: ''},
+                ]
+                const colorOptions = ref({
+                    darkColor: '#000000',
+                    lightColor: '#ffffff'
+
+                })
+                const colorsQrFields = [
+                    {key: 'darkColor', label: 'Dark Color', type: 'color', min: null, placeholder: ''},
+                    {key: 'lightColor', label: 'Light Color', type: 'color', min: null, placeholder: ''}
+                ]
+
+                const mainButtons = [
+                    {
+                        label: 'Generate',
+                        class: 'px-4 py-2 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 focus:outline-none',
+                        action: generateQR
+                    },
+                    {
+                        label: 'Export PNG',
+                        class: 'px-4 py-2 bg-purple-600 text-white font-semibold rounded hover:bg-purple-700 focus:outline-none',
+                        action: exportPNG
+                    },
+                    {
+                        label: 'Export SVG',
+                        class: 'px-4 py-2 bg-indigo-600 text-white font-semibold rounded hover:bg-indigo-700 focus:outline-none',
+                        action: exportSVG
+                    }
+                ]
+                const qrCanvas = ref(null)
+                const outputString = ref('')
+                const savedConfigs = ref([])
+                onMounted(() => {
+                    loadWorkingState()
+                    loadSavedConfigs()
+                    generateQR()
+                })
+                watch(
+                    () => ({
+                        mode: mode.value,
+                        plainText: plainText.value,
+                        vcard: vcardData.value,
+                        basic: basicOptions.value,
+                        color: colorOptions.value,
+                        adv: advOptions.value
+                    }),
+                    () => {generateQR()},
+                    {deep: true}
+                )
+                function saveWorkingState() {
+                    const data = {
+                        mode: mode.value,
+                        plainText: plainText.value,
+                        vcardData: vcardData.value,
+                        basicOptions: basicOptions.value,
+                        advOptions: advOptions.value
+                    }
+                    localStorage.setItem('qrRfc6350Working', JSON.stringify(data))
+                }
+                function loadWorkingState() {
+                    const raw = localStorage.getItem('qrRfc6350Working')
+                    if (!raw) return
+                    try {
+                        const parsed = JSON.parse(raw)
+                        mode.value = parsed.mode || 'text'
+                        plainText.value = parsed.plainText || ''
+                        vcardData.value = parsed.vcardData || vcardData.value
+                        basicOptions.value = parsed.basicOptions || basicOptions.value
+                        advOptions.value = parsed.advOptions || advOptions.value
+                    } catch (e) {
+                        console.warn('Error loading working state', e)
+                    }
+                }
+                function saveSavedConfigs() {
+                    localStorage.setItem('qrRfc6350SavedList', JSON.stringify(savedConfigs.value))
+                }
+                function loadSavedConfigs() {
+                    const raw = localStorage.getItem('qrRfc6350SavedList')
+                    if (!raw) return
+                    try {
+                        savedConfigs.value = JSON.parse(raw)
+                    } catch (e) {
+                        console.warn('Error loading saved configs', e)
+                        savedConfigs.value = []
+                    }
+                }
+                function clearAllConfigs() {
+                    if (!confirm('Clear ALL saved configs?')) return
+                    savedConfigs.value = []
+                    saveSavedConfigs()
+                }
+                function createUniqueId() {
+                    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+                }
+                function saveCurrentConfig() {
+                    generateQR()
+                    const now = Date.now()
+                    const newId = createUniqueId()
+                    savedConfigs.value.push({
+                        id: newId,
+                        date: now,
+                        state: {
+                            mode: mode.value,
+                            plainText: plainText.value,
+                            vcardData: JSON.parse(JSON.stringify(vcardData.value)),
+                            basicOptions: JSON.parse(JSON.stringify(basicOptions.value)),
+                            advOptions: JSON.parse(JSON.stringify(advOptions.value))
+                        }
+                    })
+                    saveSavedConfigs()
+                }
+                function loadConfig(cfg) {
+                    if (!confirm('Load this config?')) return
+                    mode.value = cfg.state.mode
+                    plainText.value = cfg.state.plainText
+                    vcardData.value = cfg.state.vcardData
+                    basicOptions.value = cfg.state.basicOptions
+                    advOptions.value = cfg.state.advOptions
+                    generateQR()
+                }
+                function deleteConfig(i) {
+                    if (!confirm('Delete this config?')) return
+                    savedConfigs.value.splice(i, 1)
+                    saveSavedConfigs()
+                }
+                function buildVCard() {
+                    const lines = ['BEGIN:VCARD', 'VERSION:4.0']
+                    const fn = (vcardData.value.givenName || '').trim()
+                    const ln = (vcardData.value.familyName || '').trim()
+                    lines.push(`N:${ln};${fn};;;`)
+                    const fullName = [fn, ln].filter(Boolean).join(' ')
+                    if (fullName) {
+                        lines.push(`FN:${fullName}`)
+                    }
+                    if (vcardData.value.title) {
+                        lines.push(`TITLE:${vcardData.value.title.trim()}`)
+                    }
+                    if (vcardData.value.email) {
+                        lines.push(`EMAIL:${vcardData.value.email.trim()}`)
+                    }
+                    if (vcardData.value.phone) {
+                        lines.push(`TEL;VALUE=uri:tel:${vcardData.value.phone.trim()}`)
+                    }
+                    if (vcardData.value.org) {
+                        lines.push(`ORG:${vcardData.value.org.trim()}`)
+                    }
+                    if (vcardData.value.url) {
+                        lines.push(`URL:${vcardData.value.url.trim()}`)
+                    }
+                    const adr = vcardData.value.address || {}
+                    const adrLine = [
+                        adr.pobox || '',
+                        adr.ext || '',
+                        adr.street || '',
+                        adr.locality || '',
+                        adr.region || '',
+                        adr.postal || '',
+                        adr.country || ''
+                    ].join(';')
+                    if (adrLine.replace(/;/g, '').trim() !== '') {
+                        lines.push(`ADR;TYPE=work:${adrLine}`)
+                    }
+                    if (vcardData.value.enableSocial) {
+                        ['linkedin', 'twitter', 'facebook', 'instagram', 'github'].forEach(soc => {
+                            const val = (vcardData.value[soc] || '').trim()
+                            if (val) {
+                                lines.push(`URL:${val}`)
+                            }
+                        })
+                    }
+                    lines.push('END:VCARD')
+                    return lines.join('\n')
+                }
+                async function generateQR() {
+                    saveWorkingState()
+                    let textToEncode = mode.value === 'text'
+                        ? plainText.value.trim()
+                        : buildVCard().trim()
+                    if (!textToEncode) textToEncode = ' '
+
+                    const finalOpts = {
+                        errorCorrectionLevel: advOptions.value.errorCorrectionLevel || 'M',
+                        margin: parseInt(basicOptions.value.margin) || 4,
+                        color: {
+                            dark: (colorOptions.value.darkColor || '#000000') + 'ff',
+                            light: (colorOptions.value.lightColor || '#ffffff') + 'ff'
+                        }
+                    }
+                    if (basicOptions.value.width) {
+                        finalOpts.width = parseInt(basicOptions.value.width, 10)
+                    } else {
+                        finalOpts.scale = parseInt(basicOptions.value.scale, 10) || 4
+                    }
+                    if (advOptions.value.maskPattern) {
+                        finalOpts.maskPattern = parseInt(advOptions.value.maskPattern, 10)
+                    }
+                    if (advOptions.value.version) {
+                        finalOpts.version = parseInt(advOptions.value.version, 10)
+                    }
+                    if (['terminal', 'utf8'].includes(advOptions.value.outputType)) {
+                        finalOpts.small = !!advOptions.value.small
+                    }
+
+                    try {
+                        await QRCode.toCanvas(qrCanvas.value, textToEncode, finalOpts)
+                        outputString.value = ''
+                        if (advOptions.value.outputType === 'canvas') {
+                            return
+                        }
+                        if (advOptions.value.outputType === 'dataURL') {
+                            outputString.value = await QRCode.toDataURL(textToEncode, finalOpts)
+                        } else if (advOptions.value.outputType === 'svg') {
+                            outputString.value = await QRCode.toString(textToEncode, {
+                                ...finalOpts,
+                                type: 'svg'
+                            })
+                        } else if (['terminal', 'utf8'].includes(advOptions.value.outputType)) {
+                            outputString.value = await QRCode.toString(textToEncode, {
+                                ...finalOpts,
+                                type: advOptions.value.outputType
+                            })
+                        }
+                    } catch (e) {
+                        console.error(e)
+                    }
+                }
+                async function copyOutput() {
+                    try {
+                        await navigator.clipboard.writeText(outputString.value)
+                    } catch (e) {
+                        console.error('Copy failed: ' + e.message)
+                    }
+                }
+                function exportPNG() {
+                    generateQR()
+                    setTimeout(() => {
+                        const dataURL = qrCanvas.value.toDataURL('image/png')
+                        const link = document.createElement('a')
+                        link.href = dataURL
+                        link.download = 'qrcode.png'
+                        link.click()
+                    }, 100)
+                }
+                async function exportSVG() {
+                    generateQR()
+                    setTimeout(async () => {
+                        try {
+                            const opts = {...advOptions.value}
+                            const finalOpts = {
+                                errorCorrectionLevel: opts.errorCorrectionLevel || 'M',
+                                margin: parseInt(basicOptions.value.margin) || 4,
+                                color: {
+                                    dark: (basicOptions.value.darkColor || '#000000') + 'ff',
+                                    light: (basicOptions.value.lightColor || '#ffffff') + 'ff'
+                                },
+                                type: 'svg'
+                            }
+                            if (basicOptions.value.width) {
+                                finalOpts.width = parseInt(basicOptions.value.width, 10)
+                            } else {
+                                finalOpts.scale = parseInt(basicOptions.value.scale, 10) || 4
+                            }
+                            if (opts.maskPattern) {
+                                finalOpts.maskPattern = parseInt(opts.maskPattern, 10)
+                            }
+                            if (opts.version) {
+                                finalOpts.version = parseInt(opts.version, 10)
+                            }
+                            if (['terminal', 'utf8'].includes(opts.outputType)) {
+                                finalOpts.small = !!opts.small
+                            }
+                            const textToEncode = mode.value === 'text'
+                                ? (plainText.value.trim() || ' ')
+                                : buildVCard().trim() || ' '
+                            const svgStr = await QRCode.toString(textToEncode, finalOpts)
+                            const blob = new Blob([svgStr], {type: 'image/svg+xml'})
+                            const url = URL.createObjectURL(blob)
+                            const link = document.createElement('a')
+                            link.href = url
+                            link.download = 'qrcode.svg'
+                            link.click()
+                            URL.revokeObjectURL(url)
+                        } catch (e) {
+                            console.error(e)
+                        }
+                    }, 100)
+                }
+                return {
+                    showAdvancedModal,
+                    showSavedModal,
+                    mode,
+                    plainText,
+                    vcardData,
+                    socialFields,
+                    addressFields,
+                    basicOptions,
+                    colorOptions,
+                    advOptions,
+                    basicQrFields,
+                    colorsQrFields,
+                    mainButtons,
+                    qrCanvas,
+                    outputString,
+                    savedConfigs,
+                    copyOutput,
+                    exportPNG,
+                    exportSVG,
+                    saveCurrentConfig,
+                    loadConfig,
+                    deleteConfig,
+                    clearAllConfigs
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
